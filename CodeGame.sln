@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.11.35222.181
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CodeGame", "CodeGame\CodeGame.csproj", "{3448C761-E4AA-4144-AC16-3B5E72BCA12A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3448C761-E4AA-4144-AC16-3B5E72BCA12A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3448C761-E4AA-4144-AC16-3B5E72BCA12A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3448C761-E4AA-4144-AC16-3B5E72BCA12A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3448C761-E4AA-4144-AC16-3B5E72BCA12A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {C7A1F8D2-5567-4569-82CB-801C4A509A58}
+	EndGlobalSection
+EndGlobal
