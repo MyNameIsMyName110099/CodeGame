@@ -47,32 +47,42 @@ public class GameView : View
                 }
 
                 var tile = _level.GetTile(x, y);
-                switch (tile)
-                {
-                    case TileType.Platform:
-                        Driver.SetAttribute(new TAttr(Color.Gray, Color.Black));
-                        AddRune(x, y, '=');
-                        break;
-                    case TileType.Start:
-                        Driver.SetAttribute(new TAttr(Color.Green, Color.Black));
-                        AddRune(x, y, '=');
-                        break;
-                    case TileType.Spike:
-                        Driver.SetAttribute(new TAttr(Color.BrightRed, Color.Black));
-                        AddRune(x, y, '^');
-                        break;
-                    case TileType.Checkpoint:
-                        Driver.SetAttribute(new TAttr(Color.BrightGreen, Color.Black));
-                        AddRune(x, y, 'E');
-                        break;
-                    default:
-                        Driver.SetAttribute(new TAttr(Color.Black, Color.Black));
-                        AddRune(x, y, ' ');
-                        break;
-                }
+                var (attr, ch) = TileVisual(tile);
+                Driver.SetAttribute(attr);
+                AddRune(x, y, ch);
             }
         }
     }
+
+    private static (TAttr attr, char ch) TileVisual(TileType tile) => tile switch
+    {
+        // ── Core tiles ─────────────────────────────────────────
+        TileType.Platform   => (new TAttr(Color.Gray,        Color.Black), '='),
+        TileType.Start      => (new TAttr(Color.Green,       Color.Black), '='),
+        TileType.Spike      => (new TAttr(Color.BrightRed,   Color.Black), '^'),
+        TileType.Checkpoint => (new TAttr(Color.BrightGreen,  Color.Black), 'E'),
+
+        // ── Platform variants ──────────────────────────────────
+        TileType.Stone      => (new TAttr(Color.Gray,        Color.Black), '#'),
+        TileType.Grass      => (new TAttr(Color.Green,       Color.Black), '"'),
+        TileType.Sand       => (new TAttr(Color.BrightYellow,Color.Black), '.'),
+        TileType.Wood       => (new TAttr(Color.Brown,       Color.Black), '='),
+        TileType.Metal      => (new TAttr(Color.BrightCyan,  Color.Black), '='),
+        TileType.Bridge     => (new TAttr(Color.DarkGray,    Color.Black), '-'),
+
+        // ── Hazard variants ────────────────────────────────────
+        TileType.Lava       => (new TAttr(Color.Brown,       Color.Black), '~'),
+        TileType.Water      => (new TAttr(Color.BrightCyan,  Color.Black), '~'),
+        TileType.Thorns     => (new TAttr(Color.Magenta,     Color.Black), '*'),
+        TileType.Fire       => (new TAttr(Color.BrightRed,   Color.Black), '^'),
+
+        // ── Special ────────────────────────────────────────────
+        TileType.Crumble    => (new TAttr(Color.DarkGray,    Color.Black), ':'),
+        TileType.Wall       => (new TAttr(Color.White,       Color.Black), '#'),
+
+        // ── Empty ──────────────────────────────────────────────
+        _                   => (new TAttr(Color.Black,       Color.Black), ' '),
+    };
 
     private void AddRune(int x, int y, char c)
     {

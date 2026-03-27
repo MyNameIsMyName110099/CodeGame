@@ -34,7 +34,13 @@ public class CodeExecutor
             switch (block.Type)
             {
                 case BlockType.Walk:
-                    x = Clamp(x + 2f, 0, _level.Width - 1);
+                    for (int step = 0; step < 2; step++)
+                    {
+                        float newX = Clamp(x + 1f, 0, _level.Width - 1);
+                        int nx = (int)Math.Round(newX), cy = (int)Math.Round(y);
+                        if (_level.IsSolid(nx, cy)) break; // wall in the way
+                        x = newX;
+                    }
                     ApplyGravity(ref x, ref y);
                     steps.Add(MakeStep(x, y));
                     if (steps[^1].Died || steps[^1].Won) return steps;
@@ -70,10 +76,21 @@ public class CodeExecutor
         float x = startX, y = startY;
         for (int i = 0; i < dxs.Length; i++)
         {
-            x = Clamp(x + dxs[i], 0, _level.Width - 1);
-            y = Clamp(y + dys[i], 0, _level.Height - 1);
+            float newX = Clamp(x + dxs[i], 0, _level.Width - 1);
+            float newY = Clamp(y + dys[i], 0, _level.Height - 1);
+            int tx = (int)Math.Round(newX), ty = (int)Math.Round(newY);
 
-            int tx = (int)Math.Round(x), ty = (int)Math.Round(y);
+            if (_level.IsSolid(tx, ty))
+            {
+                // Blocked mid-arc — settle from current position
+                ApplyGravity(ref x, ref y);
+                steps.Add(MakeStep(x, y));
+                return steps;
+            }
+
+            x = newX;
+            y = newY;
+
             if (_level.IsSpike(tx, ty))
             {
                 steps.Add(new ExecutionStep { X = x, Y = y, Died = true });
@@ -143,44 +160,22 @@ public class CodeExecutor
     private List<CodeBlock> FlattenBlocks(List<CodeBlock> blocks)
     {
         var result = new List<CodeBlock>();
-        FlattenInto(blocks, 0, blocks.Count, result); // 'to' is exclusive
+        FlattenInto(blocks, result);
         return result;
     }
 
-    // 'from' is inclusive, 'to' is exclusive (like array indices)
-    private void FlattenInto(List<CodeBlock> blocks, int from, int to, List<CodeBlock> result)
+    private void FlattenInto(List<CodeBlock> blocks, List<CodeBlock> result)
     {
-        int i = from;
-        while (i < to)
+        foreach (var block in blocks)
         {
-            var block = blocks[i];
             if (block.Type == BlockType.Repeat)
             {
-                // Scan forward for the matching End block
-                int depth = 1, j = i + 1;
-                while (j < to && depth > 0)
-                {
-                    if (blocks[j].Type == BlockType.Repeat) depth++;
-                    else if (blocks[j].Type == BlockType.End) depth--;
-                    if (depth > 0) j++; // leave j pointing at the End block when found
-                }
-                // j == index of End block (if found), or j == to (if no End)
-                // body is blocks[i+1 .. j) — End itself is excluded
-                int bodyEnd = j; // exclusive
-
                 for (int r = 0; r < block.RepeatCount; r++)
-                    FlattenInto(blocks, i + 1, bodyEnd, result);
-
-                i = (depth == 0) ? j + 1 : j; // skip past End if one was found
-            }
-            else if (block.Type == BlockType.End)
-            {
-                i++; // orphan End with no matching Repeat — skip it
+                    FlattenInto(block.Children, result);
             }
             else
             {
                 result.Add(block);
-                i++;
             }
         }
     }

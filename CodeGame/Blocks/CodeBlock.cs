@@ -3,7 +3,8 @@ namespace CodeGame.Blocks;
 public class CodeBlock
 {
     public BlockType Type { get; set; }
-    public int RepeatCount { get; set; } = 1; // only used for Repeat blocks
+    public int RepeatCount { get; set; } = 1;
+    public List<CodeBlock> Children { get; } = new(); // body of a Repeat block
 
     public CodeBlock(BlockType type, int repeatCount = 1)
     {
@@ -16,7 +17,6 @@ public class CodeBlock
         BlockType.Walk   => "Walk",
         BlockType.Jump   => "Jump",
         BlockType.Repeat => $"Repeat x{RepeatCount}",
-        BlockType.End    => "End",
         BlockType.Pause  => "Pause",
         _                => Type.ToString()
     };
@@ -26,7 +26,6 @@ public class CodeBlock
         BlockType.Walk   => "#4FC3F7",
         BlockType.Jump   => "#81C784",
         BlockType.Repeat => "#FFB74D",
-        BlockType.End    => "#FFB74D",
         BlockType.Pause  => "#CE93D8",
         _                => "#FFFFFF"
     };
