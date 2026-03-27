@@ -5,17 +5,40 @@ namespace CodeGame.UI.Views;
 
 /// <summary>
 /// Right panel: the ordered list of blocks the player has assembled.
-/// Blocks snap into numbered slots. Supports drag-to-reorder and drag-to-delete.
+/// Supports drag-to-reorder and drag-to-delete. Repeat blocks act as containers —
+/// they show as a single block when empty and expand when children are dropped inside.
 /// </summary>
 public class BlockSequenceView : View
 {
     public List<CodeBlock> Blocks { get; } = new();
 
-    // Index of the slot currently highlighted as a drop target (-1 = none)
+    // Visual row currently highlighted as a drop target (-1 = none)
     public int DropTargetIndex { get; set; } = -1;
 
-    // Fired when user starts dragging an existing block from the sequence
-    public event Action<int, MouseEvent>? BlockReorderStarted;
+    /// <summary>Where to insert a dropped block: a target list and an index within it.</summary>
+    public record DropSlot(List<CodeBlock> List, int Index);
+
+    /// <summary>Fired when user starts dragging a block from the sequence.
+    /// Args: (block, ownerList, indexInOwnerList, mouseEvent)</summary>
+    public event Action<CodeBlock, List<CodeBlock>, int, MouseEvent>? BlockReorderStarted;
+
+    // ── Draw plan ──────────────────────────────────────────────────
+    private enum RowKind { Block, RepeatHeader, RepeatFooter, DropZone }
+
+    private record DrawRow(
+        RowKind Kind,
+        CodeBlock? Block,
+        int Depth,
+        List<CodeBlock> DropList,
+        int DropIndex,
+        List<CodeBlock>? SourceList,
+        int SourceIndex
+    );
+
+    private readonly List<DrawRow> _rows = new();
+
+    // Same label width as the palette: "[ DisplayNm  ]" = 14 chars
+    private const int LabelWidth = BlockPaletteView.BlockLabelWidth;
 
     public BlockSequenceView()
     {
@@ -23,110 +46,162 @@ public class BlockSequenceView : View
         WantMousePositionReports = true;
     }
 
+    // ── Hit testing ────────────────────────────────────────────────
+
     public override bool MouseEvent(MouseEvent me)
     {
         if (me.Flags.HasFlag(MouseFlags.Button1Pressed))
         {
-            int index = SlotAtY(me.Y);
-            if (index >= 0 && index < Blocks.Count)
-                BlockReorderStarted?.Invoke(index, me);
+            int row = me.Y - 1;
+            if (row >= 0 && row < _rows.Count)
+            {
+                var r = _rows[row];
+                if (r.SourceList != null && r.Block != null)
+                    BlockReorderStarted?.Invoke(r.Block, r.SourceList, r.SourceIndex, me);
+            }
         }
         return true;
     }
 
-    /// <summary>Returns the slot index that corresponds to a y coordinate, or -1 if none.</summary>
-    public int SlotAtY(int y)
-    {
-        // Slots start at y=1, one per row
-        int idx = y - 1;
-        return (idx >= 0 && idx <= Blocks.Count) ? idx : -1;
-    }
-
-    public int SlotAtScreenY(int screenY)
+    /// <summary>Returns the visual row index for a given absolute screen Y.</summary>
+    public int VisualRowAtScreenY(int screenY)
     {
         int localY = screenY - Frame.Y;
-        return SlotAtY(localY);
+        return localY - 1;
     }
+
+    /// <summary>Returns the drop target (list + index) for a given absolute screen Y, or null.</summary>
+    public DropSlot? GetDropSlotAtScreenY(int screenY)
+    {
+        int row = VisualRowAtScreenY(screenY);
+        if (row < 0 || row >= _rows.Count) return null;
+        var r = _rows[row];
+        return new DropSlot(r.DropList, r.DropIndex);
+    }
+
+    // ── Draw plan construction ─────────────────────────────────────
+
+    private void BuildRows()
+    {
+        _rows.Clear();
+        BuildRowsFrom(Blocks, 0);
+        _rows.Add(new DrawRow(RowKind.DropZone, null, 0,
+            Blocks, Blocks.Count, null, -1));
+    }
+
+    private void BuildRowsFrom(List<CodeBlock> blocks, int depth)
+    {
+        for (int i = 0; i < blocks.Count; i++)
+        {
+            var block = blocks[i];
+
+            if (block.Type == BlockType.Repeat)
+            {
+                _rows.Add(new DrawRow(RowKind.RepeatHeader, block, depth,
+                    block.Children, 0,
+                    blocks, i));
+
+                if (block.Children.Count > 0)
+                {
+                    BuildRowsFrom(block.Children, depth + 1);
+
+                    _rows.Add(new DrawRow(RowKind.DropZone, null, depth + 1,
+                        block.Children, block.Children.Count, null, -1));
+
+                    _rows.Add(new DrawRow(RowKind.RepeatFooter, block, depth,
+                        blocks, i + 1, null, -1));
+                }
+            }
+            else
+            {
+                _rows.Add(new DrawRow(RowKind.Block, block, depth,
+                    blocks, i,
+                    blocks, i));
+            }
+        }
+    }
+
+    // ── Rendering ──────────────────────────────────────────────────
 
     public override void Redraw(Rect bounds)
     {
         base.Redraw(bounds);
+        BuildRows();
 
         Driver.SetAttribute(new TAttr(Color.White, Color.Black));
         Move(1, 0);
         Driver.AddStr("Your Program");
 
-        int innerWidth = bounds.Width - 2; // usable width between the left/right margins
-        int depth = 0;
-
-        for (int i = 0; i < Blocks.Count; i++)
+        for (int i = 0; i < _rows.Count; i++)
         {
             int y = i + 1;
             if (y >= bounds.Height) break;
 
-            // Drop-target indicator line
+            var row = _rows[i];
+            int x = 1 + row.Depth * 2;
+
             if (i == DropTargetIndex)
             {
                 Driver.SetAttribute(new TAttr(Color.White, Color.DarkGray));
-                Move(1, y);
-                Driver.AddStr(new string('─', innerWidth));
+                Move(x, y);
+                Driver.AddStr(new string('\u2500', LabelWidth));
             }
 
-            var block = Blocks[i];
-            var attr  = BlockPaletteView.BlockColor(block.Type);
+            switch (row.Kind)
+            {
+                case RowKind.Block:
+                    DrawBlockLabel(x, y, row.Block!);
+                    break;
 
-            if (block.Type == BlockType.Repeat)
-            {
-                // ┌─ Repeat x2 ──────┐
-                string title   = $" Repeat x{block.RepeatCount} ";
-                int    dashes  = Math.Max(0, innerWidth - 2 - title.Length - 2);
-                string line    = "┌─" + title + new string('─', dashes) + "┐";
-                Driver.SetAttribute(attr);
-                Move(1, y);
-                Driver.AddStr(line.PadRight(innerWidth));
-                depth++;
-            }
-            else if (block.Type == BlockType.End)
-            {
-                // └──────────────────┘
-                if (depth > 0) depth--;
-                var repeatAttr = BlockPaletteView.BlockColor(BlockType.Repeat);
-                string line = "└" + new string('─', innerWidth - 2) + "┘";
-                Driver.SetAttribute(repeatAttr);
-                Move(1, y);
-                Driver.AddStr(line.PadRight(innerWidth));
-            }
-            else
-            {
-                string label = $"[ {block.DisplayName,-12} ]";
-                Driver.SetAttribute(attr);
+                case RowKind.RepeatHeader:
+                    if (row.Block!.Children.Count == 0)
+                        DrawBlockLabel(x, y, row.Block);
+                    else
+                        DrawRepeatHeader(x, y, row.Block);
+                    break;
 
-                if (depth > 0)
-                {
-                    // │  [ Walk         ]  │
-                    int padding = innerWidth - 2 - 1 - label.Length - 1; // borders + spaces
-                    string line = "│ " + label + new string(' ', Math.Max(0, padding)) + " │";
-                    Move(1, y);
-                    Driver.AddStr(line.PadRight(innerWidth));
-                }
-                else
-                {
-                    Move(1, y);
-                    Driver.AddStr(label.PadRight(innerWidth));
-                }
+                case RowKind.RepeatFooter:
+                    DrawRepeatFooter(x, y);
+                    break;
+
+                case RowKind.DropZone:
+                    DrawDropZone(x, y, i == DropTargetIndex);
+                    break;
             }
         }
+    }
 
-        // Drop zone at the bottom
-        int dropY = Blocks.Count + 1;
-        if (dropY < bounds.Height)
-        {
-            bool isTarget = DropTargetIndex == Blocks.Count;
-            Driver.SetAttribute(isTarget
-                ? new TAttr(Color.White, Color.DarkGray)
-                : new TAttr(Color.DarkGray, Color.Black));
-            Move(1, dropY);
-            Driver.AddStr("[ + drop here ]");
-        }
+    private void DrawBlockLabel(int x, int y, CodeBlock block)
+    {
+        var attr = BlockPaletteView.BlockColor(block.Type);
+        Driver.SetAttribute(attr);
+        Move(x, y);
+        Driver.AddStr($"[ {block.DisplayName,-10} ]");
+    }
+
+    private void DrawRepeatHeader(int x, int y, CodeBlock block)
+    {
+        var attr = BlockPaletteView.BlockColor(BlockType.Repeat);
+        Driver.SetAttribute(attr);
+        Move(x, y);
+        string title = $"Repeat x{block.RepeatCount}";
+        Driver.AddStr($"\u250c {title,-10} \u2510");
+    }
+
+    private void DrawRepeatFooter(int x, int y)
+    {
+        var attr = BlockPaletteView.BlockColor(BlockType.Repeat);
+        Driver.SetAttribute(attr);
+        Move(x, y);
+        Driver.AddStr("\u2514" + new string('\u2500', 12) + "\u2518");
+    }
+
+    private void DrawDropZone(int x, int y, bool highlighted)
+    {
+        Driver.SetAttribute(highlighted
+            ? new TAttr(Color.White, Color.DarkGray)
+            : new TAttr(Color.DarkGray, Color.Black));
+        Move(x, y);
+        Driver.AddStr("[ + drop here ]");
     }
 }

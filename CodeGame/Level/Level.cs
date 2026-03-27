@@ -25,12 +25,21 @@ public class Level
         return _tiles[x, y];
     }
 
-    public bool IsSolid(int x, int y) =>
-        GetTile(x, y) == TileType.Platform ||
-        GetTile(x, y) == TileType.Start ||
-        GetTile(x, y) == TileType.Checkpoint;
+    public bool IsSolid(int x, int y)
+    {
+        var t = GetTile(x, y);
+        return t is TileType.Platform or TileType.Start or TileType.Checkpoint
+            or TileType.Stone or TileType.Grass or TileType.Sand
+            or TileType.Wood or TileType.Metal or TileType.Bridge
+            or TileType.Wall;
+    }
 
-    public bool IsSpike(int x, int y) => GetTile(x, y) == TileType.Spike;
+    public bool IsSpike(int x, int y)
+    {
+        var t = GetTile(x, y);
+        return t is TileType.Spike or TileType.Lava or TileType.Water
+            or TileType.Thorns or TileType.Fire;
+    }
 
     public bool IsCheckpoint(int x, int y) => GetTile(x, y) == TileType.Checkpoint;
 }

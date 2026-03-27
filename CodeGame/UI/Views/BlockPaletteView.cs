@@ -13,7 +13,6 @@ public class BlockPaletteView : View
         BlockType.Walk,
         BlockType.Jump,
         BlockType.Repeat,
-        BlockType.End,
         BlockType.Pause
     ];
 
@@ -27,14 +26,13 @@ public class BlockPaletteView : View
     }
 
     // Label format: "[ Walk       ]" — 2 + 10 + 2 = 14 chars, drawn at x=1
-    private const int BlockLabelX = 1;
-    private const int BlockLabelWidth = 14;
+    public const int BlockLabelX = 1;
+    public const int BlockLabelWidth = 14;
 
     public override bool MouseEvent(MouseEvent me)
     {
         if (me.Flags.HasFlag(MouseFlags.Button1Pressed))
         {
-            // Blocks drawn at y = 1 + i (title at y=0)
             int index = me.Y - 1;
             bool inXBounds = me.X >= BlockLabelX && me.X < BlockLabelX + BlockLabelWidth;
             if (inXBounds && index >= 0 && index < AvailableBlocks.Length)
@@ -46,7 +44,6 @@ public class BlockPaletteView : View
     public override void Redraw(Rect bounds)
     {
         base.Redraw(bounds);
-        // Title at y=0, blocks at y=1,2,3...
         DrawTitle(0, "Blocks");
 
         for (int i = 0; i < AvailableBlocks.Length; i++)
@@ -78,7 +75,6 @@ public class BlockPaletteView : View
         BlockType.Walk   => new TAttr(Color.Black, Color.BrightCyan),
         BlockType.Jump   => new TAttr(Color.Black, Color.BrightGreen),
         BlockType.Repeat => new TAttr(Color.Black, Color.BrightYellow),
-        BlockType.End    => new TAttr(Color.Black, Color.Brown),
         BlockType.Pause  => new TAttr(Color.Black, Color.Magenta),
         _                => new TAttr(Color.White, Color.Black)
     };

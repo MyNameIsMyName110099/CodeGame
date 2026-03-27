@@ -10,7 +10,9 @@ public class DragState
 {
     public DragSource Source { get; set; }
     public BlockType BlockType { get; set; }
-    public int SequenceIndex { get; set; } // only valid when Source == Sequence
+    public CodeBlock? DraggedBlock { get; set; }
+    public List<CodeBlock>? SourceList { get; set; }
+    public int SourceIndex { get; set; }
     public int GhostX { get; set; }
     public int GhostY { get; set; }
 }
@@ -38,7 +40,6 @@ public class DragDropController
         _palette.BlockDragStarted += OnPaletteDragStarted;
         _sequence.BlockReorderStarted += OnSequenceReorderStarted;
 
-        // Hook global mouse for move and release
         Application.RootMouseEvent += OnGlobalMouse;
     }
 
@@ -55,35 +56,39 @@ public class DragDropController
         ShowGhost(new CodeBlock(type));
     }
 
-    private void OnSequenceReorderStarted(int index, MouseEvent me)
+    private void OnSequenceReorderStarted(CodeBlock block, List<CodeBlock> sourceList, int sourceIndex, MouseEvent me)
     {
         if (_drag != null) return;
         _drag = new DragState
         {
             Source = DragSource.Sequence,
-            BlockType = _sequence.Blocks[index].Type,
-            SequenceIndex = index,
+            BlockType = block.Type,
+            DraggedBlock = block,
+            SourceList = sourceList,
+            SourceIndex = sourceIndex,
             GhostX = me.X + _sequence.Frame.X,
             GhostY = me.Y + _sequence.Frame.Y
         };
-        ShowGhost(_sequence.Blocks[index]);
+        ShowGhost(block);
     }
 
     private void OnGlobalMouse(MouseEvent me)
     {
         if (_drag == null) return;
 
-        _drag.GhostX = me.X;
-        _drag.GhostY = me.Y;
+        int localX = me.X - _root.Frame.X;
+        int localY = me.Y - _root.Frame.Y;
+
+        _drag.GhostX = localX;
+        _drag.GhostY = localY;
 
         if (_ghostView != null)
         {
-            _ghostView.Frame = new Rect(me.X, me.Y, _ghostView.Frame.Width, _ghostView.Frame.Height);
+            _ghostView.Frame = new Rect(localX, localY, _ghostView.Frame.Width, _ghostView.Frame.Height);
         }
 
-        // Highlight drop target in sequence
-        int slot = _sequence.SlotAtScreenY(me.Y);
-        _sequence.DropTargetIndex = slot;
+        int visualRow = _sequence.VisualRowAtScreenY(me.Y);
+        _sequence.DropTargetIndex = visualRow;
         _sequence.SetNeedsDisplay();
 
         if (me.Flags.HasFlag(MouseFlags.Button1Released))
@@ -97,39 +102,62 @@ public class DragDropController
 
         if (_drag == null) return;
 
-        // Determine drop slot
-        int slot = _sequence.SlotAtScreenY(me.Y);
+        var dropSlot = _sequence.GetDropSlotAtScreenY(me.Y);
 
-        // Check if dropped outside sequence (to delete)
-        bool overSequence = me.X >= _sequence.Frame.X && me.X < _sequence.Frame.X + _sequence.Frame.Width
-                         && me.Y >= _sequence.Frame.Y && me.Y < _sequence.Frame.Y + _sequence.Frame.Height;
+        int seqScreenX = _root.Frame.X + _sequence.Frame.X;
+        int seqScreenY = _root.Frame.Y + _sequence.Frame.Y;
+        bool overSequence = me.X >= seqScreenX && me.X < seqScreenX + _sequence.Frame.Width
+                         && me.Y >= seqScreenY && me.Y < seqScreenY + _sequence.Frame.Height;
 
         if (_drag.Source == DragSource.Sequence)
         {
-            // Remove from original position
-            var block = _sequence.Blocks[_drag.SequenceIndex];
-            _sequence.Blocks.RemoveAt(_drag.SequenceIndex);
+            var block = _drag.DraggedBlock!;
 
-            if (overSequence && slot >= 0)
+            bool selfDrop = block.Type == BlockType.Repeat && dropSlot != null
+                         && IsDescendantList(block, dropSlot.List);
+
+            _drag.SourceList!.RemoveAt(_drag.SourceIndex);
+
+            if (overSequence && dropSlot != null && !selfDrop)
             {
-                // Adjust index after removal
-                int insertAt = slot;
-                if (slot > _drag.SequenceIndex) insertAt--;
-                insertAt = Math.Clamp(insertAt, 0, _sequence.Blocks.Count);
-                _sequence.Blocks.Insert(insertAt, block);
+                int insertAt = dropSlot.Index;
+                if (ReferenceEquals(dropSlot.List, _drag.SourceList) && dropSlot.Index > _drag.SourceIndex)
+                    insertAt--;
+                insertAt = Math.Clamp(insertAt, 0, dropSlot.List.Count);
+                dropSlot.List.Insert(insertAt, block);
             }
-            // If dropped outside, block is deleted (already removed)
+            else if (!overSequence)
+            {
+                // Dropped outside — block is deleted
+            }
+            else
+            {
+                int restoreAt = Math.Min(_drag.SourceIndex, _drag.SourceList.Count);
+                _drag.SourceList.Insert(restoreAt, block);
+            }
         }
-        else if (_drag.Source == DragSource.Palette && overSequence && slot >= 0)
+        else if (_drag.Source == DragSource.Palette && overSequence && dropSlot != null)
         {
-            int insertAt = Math.Clamp(slot, 0, _sequence.Blocks.Count);
+            int insertAt = Math.Clamp(dropSlot.Index, 0, dropSlot.List.Count);
             int repeatCount = _drag.BlockType == BlockType.Repeat ? 2 : 1;
-            _sequence.Blocks.Insert(insertAt, new CodeBlock(_drag.BlockType, repeatCount));
+            dropSlot.List.Insert(insertAt, new CodeBlock(_drag.BlockType, repeatCount));
         }
 
         _drag = null;
         _sequence.SetNeedsDisplay();
         SequenceChanged?.Invoke();
+    }
+
+    private static bool IsDescendantList(CodeBlock repeat, List<CodeBlock> list)
+    {
+        if (ReferenceEquals(repeat.Children, list))
+            return true;
+        foreach (var child in repeat.Children)
+        {
+            if (child.Type == BlockType.Repeat && IsDescendantList(child, list))
+                return true;
+        }
+        return false;
     }
 
     private void ShowGhost(CodeBlock block)
